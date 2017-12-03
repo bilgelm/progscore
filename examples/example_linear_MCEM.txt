@@ -1,0 +1,6 @@
+
+import progscore as ps
+
+lt = ps.LinearTrajectory(1)
+
+
