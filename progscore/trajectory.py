@@ -28,6 +28,13 @@ class Trajectory(metaclass=ABCMeta):
     def scale(self, mu, sdev):
         pass
 
+    @staticmethod
+    @abstractmethod
+    def isdegenerate(p,k=None):
+        # check if parameters p would yield non-monotonic or
+        # otherwise inappropriate functions
+        pass
+
     #@abstractmethod
     #def copy(self):
     #    pass
@@ -46,18 +53,24 @@ class Trajectory(metaclass=ABCMeta):
         if k is None:
             if not p.shape==(self.numBiomarkers, self.__class__.numParams):
                 raise ValueError('Specified parameters do not have the correct dimensions')
-            if self.fixed_p_mask.any():
+            if np.any(self.fixed_p_mask):
                 if not all(self.params[self.fixed_p_mask]==p[self.fixed_p_mask]):
                     raise ValueError('Cannot change fixed parameters')
+            if all(self.__class__.isdegenerate(p)):
+                raise ValueError('Cannot set parameters to degenerate values')
             self.params = p
         else:
             if k<self.numBiomarkers:
                 raise ValueError('k must be smaller than number of biomarkers')
             if not len(p)==self.__class__.numParams:
                 raise ValueError('Specified parameters do not have correct dimensions!')
-            if self.fixed_p_mask[k,:].any():
+            if np.any(self.fixed_p_mask[k,:]):
                 if not all(self.params[k,self.fixed_p_mask[k,:]]==p[k,self.fixed_p_mask[k,:]]):
                     raise ValueError('Cannot change fixed parameters')
+            tmp = self.params
+            tmp[k,:] = p
+            if np.all(self.__class__.isdegenerate(tmp)):
+                raise ValueError('Cannot set parameters to degenerate values')
             self.params[k,:] = p
 
     def setFixedParams(self,fpm,fp,k):

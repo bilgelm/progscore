@@ -5,6 +5,14 @@ class LinearTrajectory(Trajectory):
     numParams = 2
 
     @staticmethod
+    def isdegenerate(p,k=None):
+        # linear trajectory is non-monotonic if slope=0
+        if k is None:
+            return p[:,0]==0
+        else:
+            return p[k,0]==0
+
+    @staticmethod
     def predictStatic(s,p):
         numParams = LinearTrajectory.numParams
 
