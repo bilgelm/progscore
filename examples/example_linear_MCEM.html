@@ -11775,11 +11775,15 @@ div#notebook {
 
 <div class="cell border-box-sizing code_cell rendered">
 <div class="input">
-<div class="prompt input_prompt">In&nbsp;[1]:</div>
+<div class="prompt input_prompt">In&nbsp;[15]:</div>
 <div class="inner_cell">
     <div class="input_area">
 <div class=" highlight hl-ipython3"><pre><span></span><span class="kn">import</span> <span class="nn">progscore</span> <span class="k">as</span> <span class="nn">ps</span>
 <span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+<span class="kn">import</span> <span class="nn">pandas</span> <span class="k">as</span> <span class="nn">pd</span>
+
+<span class="kn">import</span> <span class="nn">scipy</span> <span class="k">as</span> <span class="nn">sp</span>
+<span class="kn">from</span> <span class="nn">scipy</span> <span class="k">import</span> <span class="n">linalg</span> <span class="k">as</span> <span class="n">sp_linalg</span>
 </pre></div>
 
 </div>
@@ -11792,7 +11796,123 @@ div#notebook {
 <div class="prompt input_prompt">In&nbsp;[2]:</div>
 <div class="inner_cell">
     <div class="input_area">
-<div class=" highlight hl-ipython3"><pre><span></span><span class="n">lt</span> <span class="o">=</span> <span class="n">ps</span><span class="o">.</span><span class="n">LinearTrajectory</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+<div class=" highlight hl-ipython3"><pre><span></span><span class="n">maxNumVisits</span> <span class="o">=</span> <span class="mi">7</span>
+<span class="n">numBiomarkers</span> <span class="o">=</span> <span class="mi">8</span>
+<span class="n">numSubjects</span> <span class="o">=</span> <span class="mi">100</span>
+<span class="n">numVisitsPerSubject</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">choice</span><span class="p">(</span><span class="n">maxNumVisits</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="n">numSubjects</span><span class="p">)</span><span class="o">+</span><span class="mi">1</span>
+
+<span class="n">numSubjVisits</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">numVisitsPerSubject</span><span class="p">)</span>
+
+<span class="c1"># Ground truth subject-specific variables</span>
+<span class="n">ubar_truth</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">((</span><span class="mf">0.05</span><span class="p">,</span> <span class="o">-</span><span class="mf">3.80</span><span class="p">))</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">)</span>
+<span class="n">V_truth</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">matrix</span><span class="p">([(</span><span class="mf">0.0055</span><span class="p">,</span> <span class="o">-</span><span class="mf">0.4</span><span class="p">),(</span><span class="o">-</span><span class="mf">0.4</span><span class="p">,</span> <span class="mi">30</span><span class="p">)])</span>
+<span class="n">u_truth</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">multivariate_normal</span><span class="p">(</span><span class="n">ubar_truth</span><span class="o">.</span><span class="n">flatten</span><span class="p">(),</span> <span class="n">V_truth</span><span class="p">,</span> <span class="n">numSubjects</span><span class="p">)</span>
+<span class="n">alpha_truth</span> <span class="o">=</span> <span class="n">u_truth</span><span class="p">[:,</span><span class="mi">0</span><span class="p">]</span>
+<span class="n">beta_truth</span> <span class="o">=</span> <span class="n">u_truth</span><span class="p">[:,</span><span class="mi">1</span><span class="p">]</span>
+
+<span class="c1"># Ground truth trajectory parameters</span>
+<span class="n">a_truth</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rayleigh</span><span class="p">(</span><span class="mf">0.09</span><span class="p">,</span><span class="n">numBiomarkers</span><span class="p">)</span><span class="o">-</span><span class="mf">0.05</span>
+<span class="n">b_truth</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">normal</span><span class="p">(</span><span class="mf">1.1</span><span class="p">,</span><span class="mf">0.15</span><span class="p">,</span><span class="n">numBiomarkers</span><span class="p">)</span>
+
+<span class="c1"># Generate age at baseline</span>
+<span class="n">age_baseline</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="mi">56</span><span class="p">,</span><span class="mi">93</span><span class="p">,</span><span class="n">numSubjects</span><span class="p">)</span>
+
+<span class="c1"># Subject IDs</span>
+<span class="n">subject</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">repeat</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">numSubjects</span><span class="p">),</span><span class="n">numVisitsPerSubject</span><span class="p">)</span>
+<span class="c1"># All subjects are controls</span>
+<span class="n">dx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ones_like</span><span class="p">(</span><span class="n">subject</span><span class="p">)</span>
+
+<span class="c1"># Generate visit numbers and ages at follow-up visits</span>
+<span class="n">visit</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros_like</span><span class="p">(</span><span class="n">subject</span><span class="p">)</span>
+<span class="n">age</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros_like</span><span class="p">(</span><span class="n">subject</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
+</pre></div>
+
+</div>
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+<div class="prompt input_prompt">In&nbsp;[3]:</div>
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">numSubjects</span><span class="p">):</span>
+    <span class="n">idx</span> <span class="o">=</span> <span class="n">subject</span><span class="o">==</span><span class="n">i</span>
+    <span class="n">vi</span> <span class="o">=</span> <span class="n">numVisitsPerSubject</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+    <span class="n">visit</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">vi</span><span class="p">)</span>
+    <span class="n">intervals</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="mi">3</span><span class="p">,</span><span class="n">vi</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+    <span class="n">age</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">cumsum</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">insert</span><span class="p">(</span><span class="n">intervals</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="n">age_baseline</span><span class="p">[</span><span class="n">i</span><span class="p">]))</span>
+</pre></div>
+
+</div>
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+<div class="prompt input_prompt">In&nbsp;[4]:</div>
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="c1"># Compute ground truth PS values</span>
+<span class="n">ps_truth</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">repeat</span><span class="p">(</span><span class="n">alpha_truth</span><span class="p">,</span><span class="n">numVisitsPerSubject</span><span class="p">)</span> <span class="o">*</span> <span class="n">age</span> <span class="o">+</span> \
+           <span class="n">np</span><span class="o">.</span><span class="n">repeat</span><span class="p">(</span><span class="n">beta_truth</span><span class="p">,</span><span class="n">numVisitsPerSubject</span><span class="p">)</span>
+
+<span class="n">mu</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">ps_truth</span><span class="p">)</span>
+<span class="n">sdev</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">std</span><span class="p">(</span><span class="n">ps_truth</span><span class="p">)</span>
+<span class="n">alpha_truth</span> <span class="o">=</span> <span class="n">alpha_truth</span> <span class="o">/</span> <span class="n">sdev</span>
+<span class="n">beta_truth</span> <span class="o">=</span> <span class="p">(</span><span class="n">beta_truth</span> <span class="o">-</span> <span class="n">mu</span><span class="p">)</span> <span class="o">/</span> <span class="n">sdev</span>
+<span class="n">ubar_truth</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">-=</span> <span class="n">mu</span>
+<span class="n">ubar_truth</span> <span class="o">/=</span> <span class="n">sdev</span>
+<span class="n">V_truth</span> <span class="o">/=</span> <span class="n">sdev</span><span class="o">**</span><span class="mi">2</span>
+
+<span class="n">ps_truth</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">repeat</span><span class="p">(</span><span class="n">alpha_truth</span><span class="p">,</span><span class="n">numVisitsPerSubject</span><span class="p">)</span> <span class="o">*</span> <span class="n">age</span> <span class="o">+</span> \
+           <span class="n">np</span><span class="o">.</span><span class="n">repeat</span><span class="p">(</span><span class="n">beta_truth</span><span class="p">,</span><span class="n">numVisitsPerSubject</span><span class="p">)</span>
+</pre></div>
+
+</div>
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+<div class="prompt input_prompt">In&nbsp;[5]:</div>
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="n">trajectory_truth</span> <span class="o">=</span> <span class="n">ps</span><span class="o">.</span><span class="n">LinearTrajectory</span><span class="p">(</span><span class="n">numBiomarkers</span><span class="p">)</span>
+<span class="n">p</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">((</span><span class="n">a_truth</span><span class="p">,</span><span class="n">b_truth</span><span class="p">))</span><span class="o">.</span><span class="n">T</span>
+<span class="n">trajectory_truth</span><span class="o">.</span><span class="n">setParams</span><span class="p">(</span><span class="n">p</span><span class="p">)</span>
+</pre></div>
+
+</div>
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+<div class="prompt input_prompt">In&nbsp;[6]:</div>
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="n">y_truth</span> <span class="o">=</span> <span class="n">trajectory_truth</span><span class="o">.</span><span class="n">predict</span><span class="p">(</span><span class="n">ps_truth</span><span class="p">)</span>
+</pre></div>
+
+</div>
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+<div class="prompt input_prompt">In&nbsp;[7]:</div>
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="n">lmbda_truth</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rayleigh</span><span class="p">(</span><span class="mf">0.04</span><span class="p">,</span><span class="n">numBiomarkers</span><span class="p">)</span><span class="o">+</span><span class="mf">0.08</span>
+
+<span class="n">C_truth</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">eye</span><span class="p">(</span><span class="n">numBiomarkers</span><span class="p">)</span>
+<span class="n">R_truth</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">diag</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">square</span><span class="p">(</span><span class="n">lmbda_truth</span><span class="p">))</span>
 </pre></div>
 
 </div>
@@ -11805,59 +11925,10 @@ div#notebook {
 <div class="prompt input_prompt">In&nbsp;[8]:</div>
 <div class="inner_cell">
     <div class="input_area">
-<div class=" highlight hl-ipython3"><pre><span></span><span class="nb">type</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">))</span>
+<div class=" highlight hl-ipython3"><pre><span></span><span class="n">y</span> <span class="o">=</span> <span class="n">y_truth</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">multivariate_normal</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">numBiomarkers</span><span class="p">),</span> <span class="n">R_truth</span><span class="p">,</span> <span class="n">numSubjVisits</span><span class="p">)</span>
 </pre></div>
 
 </div>
-</div>
-</div>
-
-<div class="output_wrapper">
-<div class="output">
-
-
-<div class="output_area">
-<div class="prompt output_prompt">Out[8]:</div>
-
-
-
-<div class="output_text output_subarea output_execute_result">
-<pre>numpy.ndarray</pre>
-</div>
-
-</div>
-
-</div>
-</div>
-
-</div>
-<div class="cell border-box-sizing code_cell rendered">
-<div class="input">
-<div class="prompt input_prompt">In&nbsp;[7]:</div>
-<div class="inner_cell">
-    <div class="input_area">
-<div class=" highlight hl-ipython3"><pre><span></span><span class="nb">type</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">((</span><span class="mi">1</span><span class="p">,</span><span class="mi">0</span><span class="p">))</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">))</span>
-</pre></div>
-
-</div>
-</div>
-</div>
-
-<div class="output_wrapper">
-<div class="output">
-
-
-<div class="output_area">
-<div class="prompt output_prompt">Out[7]:</div>
-
-
-
-<div class="output_text output_subarea output_execute_result">
-<pre>numpy.ndarray</pre>
-</div>
-
-</div>
-
 </div>
 </div>
 
@@ -11867,7 +11938,51 @@ div#notebook {
 <div class="prompt input_prompt">In&nbsp;[9]:</div>
 <div class="inner_cell">
     <div class="input_area">
-<div class=" highlight hl-ipython3"><pre><span></span><span class="n">np</span><span class="o">.</span><span class="n">matrix</span><span class="p">(</span><span class="s1">&#39;1;0&#39;</span><span class="p">)</span>
+<div class=" highlight hl-ipython3"><pre><span></span><span class="n">data</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span><span class="s1">&#39;subjectIDps&#39;</span><span class="p">:</span> <span class="n">subject</span><span class="p">,</span> 
+                     <span class="s1">&#39;age&#39;</span><span class="p">:</span> <span class="n">age</span><span class="p">,</span>
+                     <span class="s1">&#39;dx&#39;</span><span class="p">:</span> <span class="n">dx</span><span class="p">})</span>
+
+<span class="n">model_truth</span> <span class="o">=</span> <span class="n">ps</span><span class="o">.</span><span class="n">LinearPSModel</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">y</span><span class="o">=</span><span class="n">y</span><span class="p">)</span>
+</pre></div>
+
+</div>
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+<div class="prompt input_prompt">In&nbsp;[10]:</div>
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="n">model_truth</span><span class="o">.</span><span class="n">trajectory</span> <span class="o">=</span> <span class="n">trajectory_truth</span>
+<span class="n">model_truth</span><span class="o">.</span><span class="n">lmbda</span> <span class="o">=</span> <span class="n">lmbda_truth</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">)</span>
+<span class="n">model_truth</span><span class="o">.</span><span class="n">subjectParameters</span><span class="p">[</span><span class="s1">&#39;ubar&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">ubar_truth</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">)</span>
+<span class="n">model_truth</span><span class="o">.</span><span class="n">subjectParameters</span><span class="p">[</span><span class="s1">&#39;V&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">V_truth</span>
+<span class="n">model_truth</span><span class="o">.</span><span class="n">subjectVariables</span><span class="p">[</span><span class="s1">&#39;alpha&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">alpha_truth</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">)</span>
+<span class="n">model_truth</span><span class="o">.</span><span class="n">subjectVariables</span><span class="p">[</span><span class="s1">&#39;beta&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">beta_truth</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">)</span>
+<span class="n">model_truth</span><span class="o">.</span><span class="n">C</span> <span class="o">=</span> <span class="n">C_truth</span>
+<span class="n">model_truth</span><span class="o">.</span><span class="n">R</span> <span class="o">=</span> <span class="n">R_truth</span>
+</pre></div>
+
+</div>
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+<div class="prompt input_prompt">In&nbsp;[12]:</div>
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="c1"># let&#39;s look at first individual</span>
+<span class="n">i</span> <span class="o">=</span> <span class="mi">0</span>
+<span class="n">idx</span> <span class="o">=</span> <span class="n">subject</span><span class="o">==</span><span class="n">i</span>
+<span class="n">agei</span> <span class="o">=</span> <span class="n">age</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span>
+<span class="n">yi</span> <span class="o">=</span> <span class="n">y</span><span class="p">[</span><span class="n">idx</span><span class="p">,:]</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">agei</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">yi</span><span class="p">)</span>
 </pre></div>
 
 </div>
@@ -11879,15 +11994,18 @@ div#notebook {
 
 
 <div class="output_area">
-<div class="prompt output_prompt">Out[9]:</div>
+<div class="prompt"></div>
 
-
-
-<div class="output_text output_subarea output_execute_result">
-<pre>matrix([[1],
-        [0]])</pre>
+<div class="output_subarea output_stream output_stdout output_text">
+<pre>[ 65.08761909  67.0558984   69.2195217 ]
+[[ 1.13602729  0.98878147  1.16796632  0.76407303  0.8208166   1.22338537
+   1.21633115  1.22585489]
+ [ 1.1165597   0.90869151  1.22710251  0.68804345  0.87797232  1.24133206
+   0.97609018  1.56057955]
+ [ 1.09561662  1.07357434  1.01072824  0.52448119  0.79147049  1.15680406
+   1.43809799  1.04636388]]
+</pre>
 </div>
-
 </div>
 
 </div>
@@ -11896,10 +12014,25 @@ div#notebook {
 </div>
 <div class="cell border-box-sizing code_cell rendered">
 <div class="input">
-<div class="prompt input_prompt">In&nbsp;[13]:</div>
+<div class="prompt input_prompt">In&nbsp;[23]:</div>
 <div class="inner_cell">
     <div class="input_area">
-<div class=" highlight hl-ipython3"><pre><span></span><span class="n">np</span><span class="o">.</span><span class="n">matrix</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">))</span>
+<div class=" highlight hl-ipython3"><pre><span></span><span class="c1"># </span>
+<span class="n">a</span> <span class="o">=</span> <span class="n">model_truth</span><span class="o">.</span><span class="n">trajectory</span><span class="o">.</span><span class="n">params</span><span class="p">[:,</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">)</span>
+<span class="n">b</span> <span class="o">=</span> <span class="n">model_truth</span><span class="o">.</span><span class="n">trajectory</span><span class="o">.</span><span class="n">params</span><span class="p">[:,</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">)</span>
+<span class="n">ubar</span> <span class="o">=</span> <span class="n">model_truth</span><span class="o">.</span><span class="n">subjectParameters</span><span class="p">[</span><span class="s1">&#39;ubar&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">)</span>
+<span class="n">V</span> <span class="o">=</span> <span class="n">model_truth</span><span class="o">.</span><span class="n">subjectParameters</span><span class="p">[</span><span class="s1">&#39;V&#39;</span><span class="p">]</span>
+<span class="n">nvi</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">agei</span><span class="p">)</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">a</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">a_truth</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">b</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">b_truth</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">ubar</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">ubar_truth</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">V</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">V_truth</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">nvi</span><span class="p">)</span>
 </pre></div>
 
 </div>
@@ -11911,16 +12044,40 @@ div#notebook {
 
 
 <div class="output_area">
-<div class="prompt output_prompt">Out[13]:</div>
+<div class="prompt"></div>
 
-
-
-<div class="output_text output_subarea output_execute_result">
-<pre>matrix([[ 1.],
-        [ 1.],
-        [ 1.]])</pre>
+<div class="output_subarea output_stream output_stdout output_text">
+<pre>[[ 0.00398384]
+ [ 0.02773729]
+ [ 0.11785859]
+ [ 0.09067912]
+ [ 0.08771094]
+ [-0.00728974]
+ [ 0.01944876]
+ [ 0.01607192]]
+[ 0.00398384  0.02773729  0.11785859  0.09067912  0.08771094 -0.00728974
+  0.01944876  0.01607192]
+[[ 1.09771093]
+ [ 1.01284382]
+ [ 1.26381445]
+ [ 0.73131888]
+ [ 0.80212131]
+ [ 1.19440627]
+ [ 1.1624342 ]
+ [ 1.14161589]]
+[ 1.09771093  1.01284382  1.26381445  0.73131888  0.80212131  1.19440627
+  1.1624342   1.14161589]
+[[ 0.03459167]
+ [-2.74502581]]
+[[ 0.03459167]
+ [-2.74502581]]
+[[  2.63248458e-03  -1.91453424e-01]
+ [ -1.91453424e-01   1.43590068e+01]]
+[[  2.63248458e-03  -1.91453424e-01]
+ [ -1.91453424e-01   1.43590068e+01]]
+3
+</pre>
 </div>
-
 </div>
 
 </div>
@@ -11932,7 +12089,26 @@ div#notebook {
 <div class="prompt input_prompt">In&nbsp;[16]:</div>
 <div class="inner_cell">
     <div class="input_area">
-<div class=" highlight hl-ipython3"><pre><span></span><span class="n">np</span><span class="o">.</span><span class="n">matrix</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">eye</span><span class="p">(</span><span class="mi">2</span><span class="p">))</span>
+<div class=" highlight hl-ipython3"><pre><span></span><span class="n">detV</span> <span class="o">=</span> <span class="n">sp_linalg</span><span class="o">.</span><span class="n">det</span><span class="p">(</span><span class="n">V</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">detV</span><span class="p">)</span>
+</pre></div>
+
+</div>
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+<div class="prompt input_prompt">In&nbsp;[27]:</div>
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="n">lmbda</span> <span class="o">=</span> <span class="n">model_truth</span><span class="o">.</span><span class="n">lmbda</span>
+
+<span class="n">aRa</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">square</span><span class="p">(</span><span class="n">a</span> <span class="o">/</span> <span class="n">lmbda</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">aRa</span><span class="p">)</span>
+<span class="n">aRb</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">b</span><span class="o">.</span><span class="n">T</span><span class="p">,</span> <span class="n">a</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">square</span><span class="p">(</span><span class="n">lmbda</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">aRb</span><span class="p">)</span>
 </pre></div>
 
 </div>
@@ -11944,15 +12120,14 @@ div#notebook {
 
 
 <div class="output_area">
-<div class="prompt output_prompt">Out[16]:</div>
+<div class="prompt"></div>
 
-
-
-<div class="output_text output_subarea output_execute_result">
-<pre>matrix([[ 1.,  0.],
-        [ 0.,  1.]])</pre>
+<div class="output_subarea output_stream output_stdout output_text">
+<pre>1.99951376476
+[[ 22.05514487]]
+[[ 22.05514487]]
+</pre>
 </div>
-
 </div>
 
 </div>
@@ -11961,10 +12136,21 @@ div#notebook {
 </div>
 <div class="cell border-box-sizing code_cell rendered">
 <div class="input">
-<div class="prompt input_prompt">In&nbsp;[18]:</div>
+<div class="prompt input_prompt">In&nbsp;[30]:</div>
 <div class="inner_cell">
     <div class="input_area">
-<div class=" highlight hl-ipython3"><pre><span></span><span class="p">[</span><span class="s1">&#39;a&#39;</span><span class="p">,</span><span class="s1">&#39;b&#39;</span><span class="p">]</span> <span class="o">+</span> <span class="p">[</span><span class="kc">None</span><span class="p">]</span>
+<div class=" highlight hl-ipython3"><pre><span></span><span class="nb">print</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">agei</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">matmul</span><span class="p">(</span><span class="n">yi</span><span class="p">,</span> <span class="n">a</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">square</span><span class="p">(</span><span class="n">lmbda</span><span class="p">))))</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">agei</span><span class="p">)</span> <span class="o">*</span> <span class="n">aRb</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">agei</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">matmul</span><span class="p">(</span><span class="n">yi</span><span class="p">,</span> <span class="n">a</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">square</span><span class="p">(</span><span class="n">lmbda</span><span class="p">)))</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">agei</span><span class="p">)</span> <span class="o">*</span> <span class="n">aRb</span><span class="p">)</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">yi</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">),</span> <span class="n">a</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">square</span><span class="p">(</span><span class="n">lmbda</span><span class="p">)))</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">nvi</span> <span class="o">*</span> <span class="n">aRb</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">yi</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">),</span> <span class="n">a</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">square</span><span class="p">(</span><span class="n">lmbda</span><span class="p">))</span> <span class="o">-</span> <span class="n">nvi</span> <span class="o">*</span> <span class="n">aRb</span><span class="p">)</span>
+
+<span class="n">invSi_mui</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">((</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">agei</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">matmul</span><span class="p">(</span><span class="n">yi</span><span class="p">,</span> <span class="n">a</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">square</span><span class="p">(</span><span class="n">lmbda</span><span class="p">)))</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">agei</span><span class="p">)</span> <span class="o">*</span> <span class="n">aRb</span><span class="p">,</span>
+                        <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">yi</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">),</span> <span class="n">a</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">square</span><span class="p">(</span><span class="n">lmbda</span><span class="p">))</span> <span class="o">-</span> <span class="n">nvi</span> <span class="o">*</span> <span class="n">aRb</span> <span class="p">))</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">invSi_mui</span><span class="p">)</span>
 </pre></div>
 
 </div>
@@ -11976,14 +12162,19 @@ div#notebook {
 
 
 <div class="output_area">
-<div class="prompt output_prompt">Out[18]:</div>
+<div class="prompt"></div>
 
-
-
-<div class="output_text output_subarea output_execute_result">
-<pre>[&#39;a&#39;, &#39;b&#39;, None]</pre>
+<div class="output_subarea output_stream output_stdout output_text">
+<pre>[ 4231.40772456]
+[[ 4441.09100065]]
+[[-209.68327609]]
+[ 63.11656956]
+[[ 66.16543461]]
+[[-3.04886505]]
+[[-209.68327609]
+ [  -3.04886505]]
+</pre>
 </div>
-
 </div>
 
 </div>
@@ -11992,10 +12183,11 @@ div#notebook {
 </div>
 <div class="cell border-box-sizing code_cell rendered">
 <div class="input">
-<div class="prompt input_prompt">In&nbsp;[20]:</div>
+<div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
 <div class="inner_cell">
     <div class="input_area">
-<div class=" highlight hl-ipython3"><pre><span></span><span class="n">tmp</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">((</span><span class="mi">1</span><span class="p">,</span><span class="mi">2</span><span class="p">))</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">)</span>
+<div class=" highlight hl-ipython3"><pre><span></span><span class="c1"># code this the slow way to check</span>
+<span class="k">for</span> 
 </pre></div>
 
 </div>
@@ -12005,42 +12197,15 @@ div#notebook {
 </div>
 <div class="cell border-box-sizing code_cell rendered">
 <div class="input">
-<div class="prompt input_prompt">In&nbsp;[22]:</div>
+<div class="prompt input_prompt">In&nbsp;[11]:</div>
 <div class="inner_cell">
     <div class="input_area">
-<div class=" highlight hl-ipython3"><pre><span></span><span class="n">tmp</span><span class="o">.</span><span class="n">transpose</span><span class="p">()</span> <span class="o">*</span> <span class="n">tmp</span>
-</pre></div>
-
-</div>
-</div>
-</div>
-
-<div class="output_wrapper">
-<div class="output">
-
-
-<div class="output_area">
-<div class="prompt output_prompt">Out[22]:</div>
-
-
-
-<div class="output_text output_subarea output_execute_result">
-<pre>array([[1, 2],
-       [2, 4]])</pre>
-</div>
-
-</div>
-
-</div>
-</div>
-
-</div>
-<div class="cell border-box-sizing code_cell rendered">
-<div class="input">
-<div class="prompt input_prompt">In&nbsp;[26]:</div>
-<div class="inner_cell">
-    <div class="input_area">
-<div class=" highlight hl-ipython3"><pre><span></span><span class="n">np</span><span class="o">.</span><span class="n">matrix</span><span class="p">([(</span><span class="mi">1</span><span class="p">,</span><span class="mi">2</span><span class="p">),(</span><span class="mi">3</span><span class="p">,</span><span class="mi">4</span><span class="p">)])</span>
+<div class=" highlight hl-ipython3"><pre><span></span><span class="c1"># project an individual onto the correct trajectory model</span>
+<span class="n">i</span> <span class="o">=</span> <span class="mi">10</span>
+<span class="n">idx</span> <span class="o">=</span> <span class="n">subject</span><span class="o">==</span><span class="n">i</span>
+<span class="n">agei</span> <span class="o">=</span> <span class="n">age</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span>
+<span class="n">yi</span> <span class="o">=</span> <span class="n">y</span><span class="p">[</span><span class="n">idx</span><span class="p">,:]</span>
+<span class="n">model_truth</span><span class="o">.</span><span class="n">project</span><span class="p">(</span><span class="n">agei</span><span class="p">,</span><span class="n">yi</span><span class="p">)</span>
 </pre></div>
 
 </div>
@@ -12052,13 +12217,15 @@ div#notebook {
 
 
 <div class="output_area">
-<div class="prompt output_prompt">Out[26]:</div>
+<div class="prompt output_prompt">Out[11]:</div>
 
 
 
 <div class="output_text output_subarea output_execute_result">
-<pre>matrix([[1, 2],
-        [3, 4]])</pre>
+<pre>(matrix([[ 0.04080515]]),
+ matrix([[-2.92411733]]),
+ matrix([[  1.46838342e-03,  -1.19509079e-01],
+         [ -1.19509079e-01,   9.79658152e+00]]))</pre>
 </div>
 
 </div>
@@ -12072,7 +12239,7 @@ div#notebook {
 <div class="prompt input_prompt">In&nbsp;[32]:</div>
 <div class="inner_cell">
     <div class="input_area">
-<div class=" highlight hl-ipython3"><pre><span></span><span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">((</span><span class="n">tmp</span><span class="p">,</span><span class="n">tmp</span><span class="p">),</span><span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+<div class=" highlight hl-ipython3"><pre><span></span><span class="nb">print</span><span class="p">(</span><span class="n">alpha_truth</span><span class="p">[</span><span class="n">i</span><span class="p">],</span><span class="n">beta_truth</span><span class="p">[</span><span class="n">i</span><span class="p">])</span>
 </pre></div>
 
 </div>
@@ -12084,13 +12251,276 @@ div#notebook {
 
 
 <div class="output_area">
-<div class="prompt output_prompt">Out[32]:</div>
+<div class="prompt"></div>
+
+<div class="output_subarea output_stream output_stdout output_text">
+<pre>-0.00277107546226 -0.542483439392
+</pre>
+</div>
+</div>
+
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+<div class="prompt input_prompt">In&nbsp;[11]:</div>
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="n">model_nocorr</span> <span class="o">=</span> <span class="n">ps</span><span class="o">.</span><span class="n">LinearPSModel</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">y</span><span class="o">=</span><span class="n">y</span><span class="p">,</span> <span class="n">correlationType</span><span class="o">=</span><span class="s1">&#39;unstructured&#39;</span><span class="p">)</span>
+
+<span class="n">model_nocorr</span><span class="o">.</span><span class="n">fit</span><span class="p">()</span>
+</pre></div>
+
+</div>
+</div>
+</div>
+
+<div class="output_wrapper">
+<div class="output">
+
+
+<div class="output_area">
+<div class="prompt"></div>
+
+<div class="output_subarea output_stream output_stdout output_text">
+<pre>[[  1.06237579e-06]
+ [  7.58121543e-07]
+ [  4.74537340e-07]
+ [  2.36018427e-07]
+ [  2.31743580e-07]
+ [  4.23382380e-07]
+ [  1.47446903e-06]
+ [  1.24182429e-06]]
+[[ 1608.70631041]]
+[[  4.42379736e-06]
+ [  3.22999348e-06]
+ [  1.71529297e-06]
+ [  5.61216634e-07]
+ [  8.88989290e-07]
+ [  1.75376666e-06]
+ [  6.43368767e-06]
+ [  4.93321671e-06]]
+[[ 1608.71227713]]
+[[  1.87324013e-05]
+ [  1.38475565e-05]
+ [  6.97725301e-06]
+ [  1.83919208e-06]
+ [  3.71054075e-06]
+ [  7.46064806e-06]
+ [  2.75628970e-05]
+ [  2.06681722e-05]]
+[[ 1608.82078353]]
+[[  7.92997786e-05]
+ [  5.88968679e-05]
+ [  2.92130719e-05]
+ [  7.14476300e-06]
+ [  1.56661720e-05]
+ [  3.16631157e-05]
+ [  1.17057853e-04]
+ [  8.72750594e-05]]
+[[ 1610.7541355]]
+[[  3.07191107e-04]
+ [  2.28431225e-04]
+ [  1.12694427e-04]
+ [  2.69093250e-05]
+ [  6.06585467e-05]
+ [  1.22743957e-04]
+ [  4.53870406e-04]
+ [  3.37836339e-04]]
+[[ 1636.38400101]]
+[[  5.77367547e-04]
+ [  4.27509003e-04]
+ [  2.08228308e-04]
+ [  4.79564707e-05]
+ [  1.13844304e-04]
+ [  2.29802901e-04]
+ [  8.53070897e-04]
+ [  6.34036208e-04]]
+[[ 1710.17569792]]
+[[  5.65276689e-04]
+ [  4.13608691e-04]
+ [  1.94006182e-04]
+ [  3.86991231e-05]
+ [  1.09269343e-04]
+ [  2.20460991e-04]
+ [  8.33959392e-04]
+ [  6.19839503e-04]]
+[[ 1721.84482794]]
+[[  5.38045044e-04]
+ [  3.91382965e-04]
+ [  1.79200273e-04]
+ [  3.17502566e-05]
+ [  1.02648768e-04]
+ [  2.06687410e-04]
+ [  7.92636653e-04]
+ [  5.89772136e-04]]
+[[ 1713.5104789]]
+[[  5.21649951e-04]
+ [  3.78621491e-04]
+ [  1.71538154e-04]
+ [  2.87676025e-05]
+ [  9.89321610e-05]
+ [  1.99079297e-04]
+ [  7.67980375e-04]
+ [  5.71680634e-04]]
+[[ 1706.7656789]]
+[[  5.13196072e-04]
+ [  3.72189363e-04]
+ [  1.67987811e-04]
+ [  2.76661357e-05]
+ [  9.70623905e-05]
+ [  1.95438299e-04]
+ [  7.55399822e-04]
+ [  5.62372535e-04]]
+[[ 1703.0453957]]
+[[  5.09059652e-04]
+ [  3.69069116e-04]
+ [  1.66391747e-04]
+ [  2.73001436e-05]
+ [  9.61319694e-05]
+ [  1.93777494e-04]
+ [  7.49319895e-04]
+ [  5.57849779e-04]]
+[[ 1701.19811527]]
+[[  5.07075546e-04]
+ [  3.67565620e-04]
+ [  1.65673632e-04]
+ [  2.71964693e-05]
+ [  9.56565192e-05]
+ [  1.93033293e-04]
+ [  7.46445821e-04]
+ [  5.55706915e-04]]
+[[ 1700.3135814]]
+[[  5.06124753e-04]
+ [  3.66831279e-04]
+ [  1.65342947e-04]
+ [  2.71784192e-05]
+ [  9.54014183e-05]
+ [  1.92700329e-04]
+ [  7.45092834e-04]
+ [  5.54698977e-04]]
+[[ 1699.89218676]]
+[[  5.05662504e-04]
+ [  3.66461453e-04]
+ [  1.65183963e-04]
+ [  2.71845425e-05]
+ [  9.52560048e-05]
+ [  1.92549773e-04]
+ [  7.44449600e-04]
+ [  5.54221732e-04]]
+[[ 1699.68831633]]
+[[  5.05431135e-04]
+ [  3.66266541e-04]
+ [  1.65102797e-04]
+ [  2.71951149e-05]
+ [  9.51678236e-05]
+ [  1.92480193e-04]
+ [  7.44136619e-04]
+ [  5.53991265e-04]]
+[[ 1699.58642396]]
+[[  5.05310229e-04]
+ [  3.66157879e-04]
+ [  1.65058322e-04]
+ [  2.72046140e-05]
+ [  9.51113377e-05]
+ [  1.92446928e-04]
+ [  7.43978628e-04]
+ [  5.53876209e-04]]
+[[ 1699.53301686]]
+[[  5.05243524e-04]
+ [  3.66093541e-04]
+ [  1.65032131e-04]
+ [  2.72119992e-05]
+ [  9.50735552e-05]
+ [  1.92430266e-04]
+ [  7.43894832e-04]
+ [  5.53816039e-04]]
+[[ 1699.50333209]]
+[[  5.05204461e-04]
+ [  3.66053228e-04]
+ [  1.65015688e-04]
+ [  2.72174690e-05]
+ [  9.50474797e-05]
+ [  1.92421419e-04]
+ [  7.43847714e-04]
+ [  5.53782734e-04]]
+[[ 1699.48576463]]
+[[  5.05180230e-04]
+ [  3.66026742e-04]
+ [  1.65004828e-04]
+ [  2.72214544e-05]
+ [  9.50290967e-05]
+ [  1.92416409e-04]
+ [  7.43819561e-04]
+ [  5.53763140e-04]]
+[[ 1699.47474016]]
+[[  5.05164440e-04]
+ [  3.66008702e-04]
+ [  1.64997390e-04]
+ [  2.72243464e-05]
+ [  9.50159560e-05]
+ [  1.92413382e-04]
+ [  7.43801774e-04]
+ [  5.53750925e-04]]
+[[ 1699.46747725]]
+[[  5.05153750e-04]
+ [  3.65996098e-04]
+ [  1.64992169e-04]
+ [  2.72264456e-05]
+ [  9.50064796e-05]
+ [  1.92411449e-04]
+ [  7.43790010e-04]
+ [  5.53742930e-04]]
+[[ 1699.46251508]]
+[[  5.05146313e-04]
+ [  3.65987142e-04]
+ [  1.64988446e-04]
+ [  2.72279719e-05]
+ [  9.49996082e-05]
+ [  1.92410159e-04]
+ [  7.43781959e-04]
+ [  5.53737500e-04]]
+[[ 1699.45903814]]
+[[  5.05141043e-04]
+ [  3.65980708e-04]
+ [  1.64985765e-04]
+ [  2.72290835e-05]
+ [  9.49946089e-05]
+ [  1.92409269e-04]
+ [  7.43776315e-04]
+ [  5.53733713e-04]]
+[[ 1699.45656116]]
+[[  5.05137264e-04]
+ [  3.65976054e-04]
+ [  1.64983822e-04]
+ [  2.72298942e-05]
+ [  9.49909640e-05]
+ [  1.92408642e-04]
+ [  7.43772296e-04]
+ [  5.53731025e-04]]
+[[ 1699.45477797]]
+[[  5.05134533e-04]
+ [  3.65972673e-04]
+ [  1.64982409e-04]
+ [  2.72304860e-05]
+ [  9.49883032e-05]
+ [  1.92408194e-04]
+ [  7.43769405e-04]
+ [  5.53729095e-04]]
+[[ 1699.45348594]]
+</pre>
+</div>
+</div>
+
+<div class="output_area">
+<div class="prompt output_prompt">Out[11]:</div>
 
 
 
 <div class="output_text output_subarea output_execute_result">
-<pre>array([[1, 1],
-       [2, 2]])</pre>
+<pre>&lt;progscore.model.LinearPSModel at 0x111a3c320&gt;</pre>
 </div>
 
 </div>
@@ -12101,10 +12531,23 @@ div#notebook {
 </div>
 <div class="cell border-box-sizing code_cell rendered">
 <div class="input">
-<div class="prompt input_prompt">In&nbsp;[34]:</div>
+<div class="prompt input_prompt">In&nbsp;[12]:</div>
 <div class="inner_cell">
     <div class="input_area">
-<div class=" highlight hl-ipython3"><pre><span></span><span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">hstack</span><span class="p">((</span><span class="n">tmp</span><span class="p">,</span><span class="n">tmp</span><span class="p">)))</span>
+<div class=" highlight hl-ipython3"><pre><span></span><span class="n">data</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span><span class="s1">&#39;subjectIDps&#39;</span><span class="p">:[</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">],</span> 
+                     <span class="s1">&#39;age&#39;</span><span class="p">:[</span><span class="mi">50</span><span class="p">,</span><span class="mi">60</span><span class="p">,</span><span class="mi">70</span><span class="p">,</span><span class="mi">55</span><span class="p">,</span><span class="mi">65</span><span class="p">]})</span>
+
+<span class="n">numVisitsPerSubject</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="n">groupby</span><span class="p">(</span><span class="s1">&#39;subjectIDps&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">size</span><span class="p">()</span>
+
+<span class="n">alpha</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">((</span><span class="mf">1.1</span><span class="p">,</span> <span class="mf">1.3</span><span class="p">))</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">)</span>
+<span class="n">beta</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">((</span><span class="o">-</span><span class="mi">5</span><span class="p">,</span> <span class="mi">7</span><span class="p">))</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">)</span>
+<span class="n">ps</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">repeat</span><span class="p">(</span><span class="n">alpha</span><span class="p">,</span> <span class="n">numVisitsPerSubject</span><span class="p">)</span> <span class="o">*</span> <span class="n">data</span><span class="p">[</span><span class="s1">&#39;age&#39;</span><span class="p">]</span> <span class="o">+</span> \
+     <span class="n">np</span><span class="o">.</span><span class="n">repeat</span><span class="p">(</span><span class="n">beta</span><span class="p">,</span> <span class="n">numVisitsPerSubject</span><span class="p">)</span>
+
+<span class="n">numBiomarkers</span> <span class="o">=</span> <span class="mi">5</span>
+<span class="n">p</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span>
+<span class="n">trajectory</span> <span class="o">=</span> <span class="n">ps</span><span class="o">.</span><span class="n">LinearTrajectory</span><span class="p">(</span><span class="n">numBiomarkers</span><span class="p">)</span>
+<span class="n">trajectory</span><span class="o">.</span><span class="n">setParams</span><span class="p">()</span>
 </pre></div>
 
 </div>
@@ -12116,16 +12559,238 @@ div#notebook {
 
 
 <div class="output_area">
-<div class="prompt output_prompt">Out[34]:</div>
+<div class="prompt"></div>
 
+<div class="output_subarea output_text output_error">
+<pre>
+<span class="ansi-red-fg">---------------------------------------------------------------------------</span>
+<span class="ansi-red-fg">AttributeError</span>                            Traceback (most recent call last)
+<span class="ansi-green-fg">&lt;ipython-input-12-75fe319e0606&gt;</span> in <span class="ansi-cyan-fg">&lt;module&gt;</span><span class="ansi-blue-fg">()</span>
+<span class="ansi-green-intense-fg ansi-bold">     10</span> numBiomarkers <span class="ansi-blue-fg">=</span> <span class="ansi-cyan-fg">5</span>
+<span class="ansi-green-intense-fg ansi-bold">     11</span> p <span class="ansi-blue-fg">=</span> np<span class="ansi-blue-fg">.</span>vstack
+<span class="ansi-green-fg">---&gt; 12</span><span class="ansi-red-fg"> </span>trajectory <span class="ansi-blue-fg">=</span> ps<span class="ansi-blue-fg">.</span>LinearTrajectory<span class="ansi-blue-fg">(</span>numBiomarkers<span class="ansi-blue-fg">)</span>
+<span class="ansi-green-intense-fg ansi-bold">     13</span> trajectory<span class="ansi-blue-fg">.</span>setParams<span class="ansi-blue-fg">(</span><span class="ansi-blue-fg">)</span>
 
+<span class="ansi-green-fg">/Users/bilgelm/anaconda/lib/python3.6/site-packages/pandas/core/generic.py</span> in <span class="ansi-cyan-fg">__getattr__</span><span class="ansi-blue-fg">(self, name)</span>
+<span class="ansi-green-intense-fg ansi-bold">   3079</span>             <span class="ansi-green-fg">if</span> name <span class="ansi-green-fg">in</span> self<span class="ansi-blue-fg">.</span>_info_axis<span class="ansi-blue-fg">:</span>
+<span class="ansi-green-intense-fg ansi-bold">   3080</span>                 <span class="ansi-green-fg">return</span> self<span class="ansi-blue-fg">[</span>name<span class="ansi-blue-fg">]</span>
+<span class="ansi-green-fg">-&gt; 3081</span><span class="ansi-red-fg">             </span><span class="ansi-green-fg">return</span> object<span class="ansi-blue-fg">.</span>__getattribute__<span class="ansi-blue-fg">(</span>self<span class="ansi-blue-fg">,</span> name<span class="ansi-blue-fg">)</span>
+<span class="ansi-green-intense-fg ansi-bold">   3082</span> 
+<span class="ansi-green-intense-fg ansi-bold">   3083</span>     <span class="ansi-green-fg">def</span> __setattr__<span class="ansi-blue-fg">(</span>self<span class="ansi-blue-fg">,</span> name<span class="ansi-blue-fg">,</span> value<span class="ansi-blue-fg">)</span><span class="ansi-blue-fg">:</span>
 
-<div class="output_text output_subarea output_execute_result">
-<pre>6</pre>
+<span class="ansi-red-fg">AttributeError</span>: &#39;Series&#39; object has no attribute &#39;LinearTrajectory&#39;</pre>
+</div>
 </div>
 
 </div>
+</div>
 
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+<div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="n">lt</span> <span class="o">=</span> <span class="n">ps</span><span class="o">.</span><span class="n">LinearPS</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+</pre></div>
+
+</div>
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+<div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="nb">type</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">))</span>
+</pre></div>
+
+</div>
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+<div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="nb">type</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">((</span><span class="mi">1</span><span class="p">,</span><span class="mi">0</span><span class="p">))</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">))</span>
+</pre></div>
+
+</div>
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+<div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="n">np</span><span class="o">.</span><span class="n">matrix</span><span class="p">(</span><span class="s1">&#39;1;0&#39;</span><span class="p">)</span>
+</pre></div>
+
+</div>
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+<div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="n">np</span><span class="o">.</span><span class="n">matrix</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">))</span>
+</pre></div>
+
+</div>
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+<div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="n">np</span><span class="o">.</span><span class="n">matrix</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">eye</span><span class="p">(</span><span class="mi">2</span><span class="p">))</span>
+</pre></div>
+
+</div>
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+<div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="p">[</span><span class="s1">&#39;a&#39;</span><span class="p">,</span><span class="s1">&#39;b&#39;</span><span class="p">]</span> <span class="o">+</span> <span class="p">[</span><span class="kc">None</span><span class="p">]</span>
+</pre></div>
+
+</div>
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+<div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="n">tmp</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">((</span><span class="mi">1</span><span class="p">,</span><span class="mi">2</span><span class="p">))</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">)</span>
+</pre></div>
+
+</div>
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+<div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="n">tmp</span><span class="o">.</span><span class="n">transpose</span><span class="p">()</span> <span class="o">*</span> <span class="n">tmp</span>
+</pre></div>
+
+</div>
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+<div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="n">hodu</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">matrix</span><span class="p">([(</span><span class="mi">1</span><span class="p">,</span><span class="mi">2</span><span class="p">),(</span><span class="mi">3</span><span class="p">,</span><span class="mi">4</span><span class="p">)])</span>
+</pre></div>
+
+</div>
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+<div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="n">hodu</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span><span class="mi">0</span><span class="p">]</span>
+</pre></div>
+
+</div>
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+<div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">((</span><span class="n">tmp</span><span class="p">,</span><span class="n">tmp</span><span class="p">),</span><span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+</pre></div>
+
+</div>
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+<div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">hstack</span><span class="p">((</span><span class="n">tmp</span><span class="p">,</span><span class="n">tmp</span><span class="p">)))</span>
+</pre></div>
+
+</div>
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+<div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="n">p</span>
+</pre></div>
+
+</div>
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+<div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="n">np</span><span class="o">.</span><span class="n">matrix</span><span class="p">([</span><span class="mi">16</span><span class="p">,</span><span class="mi">25</span><span class="p">])</span><span class="o">.</span><span class="n">shape</span>
+</pre></div>
+
+</div>
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+<div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="n">a</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">matrix</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span><span class="mi">4</span><span class="p">])</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;a: </span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">a</span><span class="o">.</span><span class="n">T</span><span class="o">.</span><span class="n">shape</span><span class="p">,))</span>
+</pre></div>
+
+</div>
 </div>
 </div>
 

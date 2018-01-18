@@ -22,11 +22,11 @@ class Trajectory(metaclass=ABCMeta):
 
     @abstractmethod
     def flip(self):
-        pass
+        return self
 
     @abstractmethod
     def scale(self, mu, sdev):
-        pass
+        return self
 
     @staticmethod
     @abstractmethod

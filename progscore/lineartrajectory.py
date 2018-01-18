@@ -24,21 +24,26 @@ class LinearTrajectory(Trajectory):
 
         y = np.outer(s,a) + b.T
 
-        J = np.zeros((len(s), numParams))
-        dyda = s.flatten()
-        dydb = 1
-        J[:,0] = dyda
-        J[:,1] = dydb
+        #J = np.zeros((len(s), numParams))
+        #dyda = s.flatten()
+        #dydb = 1
+        #J[:,0] = dyda
+        #J[:,1] = dydb
 
-        JJ = np.zeros((len(s), numParams, numParams))
+        #JJ = np.zeros((len(s), numParams, numParams))
 
-        return (y, J, JJ)
+        #return (y, J, JJ)
+        return y
 
     def flip(self):
         self.params[:,0] = -self.params[:,0]
+
+        return self
 
     def scale(self,mu,sdev):
         if sdev<=0:
             raise ValueError('Standard deviation must be positive')
         self.params[:,1] = self.params[:,1] + mu*self.params[:,0]
         self.params[:,0] = sdev*self.params[:,0]
+
+        return self

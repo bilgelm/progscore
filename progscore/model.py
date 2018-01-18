@@ -1,7 +1,10 @@
 from abc import ABCMeta, abstractmethod
 import numpy as np
 import scipy as sp
+from scipy import linalg as sp_linalg
 import pandas as pd # ?
+
+from .lineartrajectory import LinearTrajectory
 
 class PSModel(metaclass=ABCMeta):
     def __init__(self,
@@ -9,9 +12,10 @@ class PSModel(metaclass=ABCMeta):
                  biomarkerLabels=None,
                  y=None,
                  correlationType='identity',
-                 maxIterations=100):
+                 maxIterations=100,
+                 tol=1e-6):
 
-        if (biomarkerLabels is None) ^ (y is None):
+        if not ((biomarkerLabels is None) ^ (y is None)):
             raise ValueError('Either biomarkerLabels or y must be specified, not both')
 
         required_cols = ['subjectIDps','age'] #,'currdx']
@@ -72,13 +76,14 @@ class PSModel(metaclass=ABCMeta):
         # initialize with linear trajectory for each marker
         self.trajectory = LinearTrajectory(self.numBiomarkers)
 
+        self.tol = tol
         self.converged = False
         self.loglik = -np.inf
 
     @property
     def ps(self):
         ps = np.repeat(self.subjectVariables['alpha'],
-                       self.numVisitsPerSubject) * self.data['age'] + \
+                       self.numVisitsPerSubject) * self.data['age'].as_matrix() + \
              np.repeat(self.subjectVariables['beta'],
                        self.numVisitsPerSubject)
         return ps
@@ -151,10 +156,10 @@ class NonlinearPSModel(PSModel):
 
 class LinearPSModel(PSModel):
     def fit(self):
-        subjectIDps = self.data['subjectIDps']
-        age = self.data['age']
-        a = self.trajectory.params[:,0]
-        b = self.trajectory.params[:,1]
+        #subjectIDps = self.data['subjectIDps']
+        #age = self.data['age']
+        #a = self.trajectory.params[:,0]
+        #b = self.trajectory.params[:,1]
 
         loglik_old = self.loglik
 
@@ -165,10 +170,10 @@ class LinearPSModel(PSModel):
                                              Sigma_00, Sigma_01, Sigma_11)
 
             self.loglik = self._compute_loglik()
-            if self.loglik < loglik_old:
-                break
+            #if self.loglik < loglik_old:
+            #    break
 
-            if np.absolute(self.loglik/loglik_old - 1) < tol:
+            if np.absolute(self.loglik/loglik_old - 1) < self.tol:
                 self.converged = True
                 break
 
@@ -184,51 +189,65 @@ class LinearPSModel(PSModel):
         if not yi.shape[1]==self.numBiomarkers:
             raise ValueError('Number of columns of yi and number of biomarkers used to train model must be the same')
 
-        a = self.trajectory.params[:,0]
-        b = self.trajectory.params[:,1]
-        ubar = self.subjectParameters['ubar']
+        a = self.trajectory.params[:,0].reshape(-1,1)
+        b = self.trajectory.params[:,1].reshape(-1,1)
+        ubar = self.subjectParameters['ubar'].reshape(-1,1)
         V = self.subjectParameters['V']
         nvi = len(agei)
 
-        detV = sp.linalg.det(V)
+        #print(a.shape)
+        #print(b.shape)
+        #print(ubar.shape)
+        #print(V.shape)
+        #print(agei)
+        #print(yi.shape)
+
+        detV = sp_linalg.det(V)
 
         if self.correlationType == 'identity':
             lmbda = self.lmbda
-            aRa = np.sum(np.square(a / lmbda))
 
-            invSi_mui = np.vstack((agei, np.ones_like(agei))) * \
-                        np.sum(yi * a / np.square(lmbda), axis=1) \
-                        - np.sum(a * b / np.square(lmbda)) * np.array((np.sum(agei), nvi))
+            aRa = np.sum(np.square(a / lmbda))
+            aRb = np.dot(b.T, a / np.square(lmbda))
+
+            invSi_mui = np.vstack(( np.dot(agei, np.matmul(yi, a / np.square(lmbda))) - np.sum(agei) * aRb,
+                                    np.dot(np.sum(yi, axis=0), a / np.square(lmbda)) - nvi * aRb ))
         else:
             R = self.R
-            aRa = np.inner(a,sp.linalg.solve(R,a,assume_a='pos'))
+            aRa = np.asscalar(np.dot(a.T,sp_linalg.solve(R,a,assume_a='pos')))
 
             invSi_mui = np.zeros((2,1))
             for j in range(nvi):
-                yij = yi[j,:].flatten()
+                yij = yi[j,:].reshape(-1,1)
                 q = np.array((agei[j],1)).reshape(-1,1)
-                invSi_mui += np.outer(q,a) * sp.linalg.solve(R,yij-b,assume_a='pos')
+                invSi_mui += np.matmul(np.dot(q,a.T), sp_linalg.solve(R,yij-b,assume_a='pos'))
 
-        Sigmai = aRa * np.matrix([nvi, -np.sum(agei)],
-                                 [-np.sum(agei), np.sum(np.square(agei))]) + V/detV
-        Sigmai /= sp.linalg.det(Sigmai)
+        Sigmai = aRa * np.matrix([ (nvi, -np.sum(agei)),
+                                   (-np.sum(agei), np.sum(np.square(agei))) ]) + V/detV
+        Sigmai /= sp_linalg.det(Sigmai)
 
-        alphai, betai = Sigmai * (invSi_mui + sp.linalg.solve(V,ubar,assume_a='pos'))
+        #print(a.shape)
+        #print(b.shape)
+        #print(lmbda.shape)
 
+        alphai, betai = np.matmul(Sigmai, invSi_mui + sp_linalg.solve(V,ubar,assume_a='pos'))
+        #print(alphai.shape)
+        #print(betai.shape)
+        #print(Sigmai.shape)
         return (alphai, betai, Sigmai)
 
     def _updateSubjectVariables(self):
         # E-step
-        subjectIDps = self.data['subjectIDps']
-        age = self.data['age']
+        subjectIDps = self.data['subjectIDps'].as_matrix()
+        age = self.data['age'].as_matrix()
 
         trace_term1 = 0
-        Sigma_00 = Sigma_01 = Sigma_11 = np.zeros((2,2))
+        Sigma_00 = Sigma_01 = Sigma_11 = np.zeros(self.numSubjects)
 
         for i in range(self.numSubjects):
             idx = subjectIDps==i
             agei = age[idx]
-            yi = self.y[idx,:].T
+            yi = self.y[idx,:]
             nvi = len(agei)
 
             alphai, betai, Sigmai = self.project(agei, yi)
@@ -254,15 +273,15 @@ class LinearPSModel(PSModel):
 
         sum_s = np.sum(ps)
         sum_ssq = np.sum(np.square(ps))
-        sum_ys = np.sum(self.y * ps, axis=0).flatten() # K-by-1
+        sum_ys = np.matmul(self.y.T, ps).reshape(-1,1) # K-by-1
 
-        ybar = np.mean(y,axis=1)
-        ysum = np.sum(y,axis=1)
+        ybar = np.mean(self.y,axis=0).reshape(-1,1)
+        ysum = np.sum(self.y,axis=0).reshape(-1,1)
 
         a = (sum_ys - sum_s * ybar) / \
-            (sum_ssq + trace_term1 - sum_s**2 / numSubjVisits)
+            (sum_ssq + trace_term1 - sum_s**2 / self.numSubjVisits)
         b = ( ( sum_ssq + trace_term1 ) * ysum - sum_s * sum_ys ) / \
-            (numSubjVisits * ( sum_ssq + trace_term1 ) - sum_s**2)
+            (self.numSubjVisits * ( sum_ssq + trace_term1 ) - sum_s**2)
 
         # handle fixed trajectory parameters - TODO
 
@@ -271,66 +290,85 @@ class LinearPSModel(PSModel):
 
         self.subjectParameters['ubar'][0] = np.mean(alpha)
         self.subjectParameters['ubar'][1] = np.mean(beta)
-
-        tmp = np.array((alpha-self.subjectParameters['ubar'][0],
-                        beta-self.subjectParameters['ubar'][1])).reshape(-1,1)
-        self.subjectParameters['V'] = np.inner(tmp, tmp) + \
-            np.matrix([(np.sum(Sigma_11), np.sum(Sigma_12)),
-                       (np.sum(Sigma_12), np.sum(Sigma_22))]) / self.numSubjects
-
+        '''
+        # there's something wrong here
+        tmp = np.hstack((alpha-self.subjectParameters['ubar'][0],
+                         beta-self.subjectParameters['ubar'][1]))
+        self.subjectParameters['V'] = np.dot(tmp.T, tmp) + \
+            np.matrix([(np.sum(Sigma_00), np.sum(Sigma_01)),
+                       (np.sum(Sigma_01), np.sum(Sigma_11))]) / self.numSubjects
+        '''
         if self.correlationType=='identity':
-            self.lmbda = (np.sum(np.square(self.y-self.y_pred)) + trace_term1 * np.square(a)) / self.numSubjVisits
-            self.R = np.diag(np.square(self.lmbda))
+            self.lmbda = (np.sum(np.square(self.y-self.y_pred), axis=0).reshape(-1,1) + \
+                          trace_term1 * np.square(a)) / self.numSubjVisits
+            self.R = np.diag(np.square(self.lmbda).flatten())
         elif self.correlationType=='unstructured':
-            self.R = (np.inner(self.y-self.y_pred, self.y-self.y_pred) + \
-                      np.outer(a,a)) / self.numSubjVisits
+            self.R = (np.matmul((self.y-self.y_pred).T, self.y-self.y_pred) + \
+                      np.matmul(a,a.T)) / self.numSubjVisits # np.outer check
             self.lmbda = np.sqrt(np.diag(self.R))
-            self.C = self.R / np.outer(self.lmbda,self.lmbda)
+            self.C = self.R / np.matmul(self.lmbda,self.lmbda.T) # np.outer check
         else:
             raise NotImplementedError()
 
         return self
 
     def _compute_loglik(self):
-        subjectIDps = self.data['subjectIDps']
-        age = self.data['age']
-        b = self.trajectory.params[:,1]
-        ubar = self.subjectParameters['ubar']
+        subjectIDps = self.data['subjectIDps'].as_matrix()
+        age = self.data['age'].as_matrix()
+        b = self.trajectory.params[:,1].reshape(-1,1)
+        ubar = self.subjectParameters['ubar'].reshape(-1,1)
         V = self.subjectParameters['V']
 
         sum_yij_b = 0
         sumlogdetSigmai = 0
         sum_uiSigmaui = 0
 
-        invV_ubar = sp.linalg.solve(V,ubar,assume_a='pos')
+        invV_ubar = sp_linalg.solve(V,ubar,assume_a='pos')
 
         for i in range(self.numSubjects):
             idx = subjectIDps==i
             agei = age[idx]
-            yi = self.y[idx,:].T
+            yi = self.y[idx,:]
             nvi = len(agei)
 
             if self.correlationType=='identity':
-                sum_yij_b += np.sum(np.square((yi-b)/self.lmbda))
+                #print(yi.shape)
+                #print(b.shape)
+                #print(self.lmbda.shape)
+                #print(np.sum(np.square((yi.T-b)/self.lmbda)))
+                sum_yij_b += np.sum(np.square((yi.T-b)/self.lmbda))
             else:
                 for j in range(nvi):
-                    tmp = sp.linalg.solve(R,yij-b,assume_a='pos')
-                    sum_yij_b += (yij-b).T * tmp
+                    yij = yi[j,:].reshape(-1,1)
+                    tmp = sp_linalg.solve(self.R,yij-b,assume_a='pos')
+                    sum_yij_b += np.dot((yij-b).T, tmp)
 
-            _, _, Sigmai = self.project(agei, yi)
-            _, logdetSigmai = np.slogdet(Sigmai)
+            alphai, betai, Sigmai = self.project(agei, yi)
+            _, logdetSigmai = np.linalg.slogdet(Sigmai)
             sumlogdetSigmai += logdetSigmai
 
-            tmp = invSi_mui + invV_ubar
-            sum_uiSigmaui += tmp.T * Sigmai * tmp
+            #tmp = invSi_mui + invV_ubar
+            #sum_uiSigmaui += tmp.T * Sigmai * tmp
+            ui = np.vstack((alphai, betai))
+            #print(alphai.shape)
+            #print(betai.shape)
+            #print(Sigmai.shape)
+            #print(sp_linalg.solve(Sigmai,ui).shape)
+            sum_uiSigmaui += np.dot(ui.T, sp_linalg.solve(Sigmai,ui))
 
-        _, logdetV = np.slogdet(V)
-        _, logdetR = np.slogdet(R)
+        _, logdetV = np.linalg.slogdet(V)
+        _, logdetR = np.linalg.slogdet(self.R)
         loglik =  0.5*( sumlogdetSigmai - self.numSubjects*logdetV \
                        -self.numSubjVisits*self.numBiomarkers*np.log(2*np.pi) \
                        -self.numSubjVisits*logdetR ) \
                  -0.5*sum_yij_b \
-                 -0.5*self.numSubjects*ubar.T*invV_ubar \
+                 -0.5*self.numSubjects*np.dot(ubar.T, invV_ubar) \
                  +0.5*sum_uiSigmaui
-
+        print(loglik)
+        #print(sumlogdetSigmai)
+        #print(logdetV)
+        #print(logdetR)
+        #print(sum_yij_b)
+        #print(sum_uiSigmaui)
+        #print()
         return loglik
